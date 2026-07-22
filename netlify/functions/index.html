@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EIG Plant Status Tracker</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+:root{
+  --bg:#1C2128; --panel:#242A32; --panel-alt:#2B323B; --border:#3A414B;
+  --text:#EDEFF2; --text-dim:#9BA3AE; --accent:#4A90A4; --accent-bright:#7FC3D6;
+  --running:#3FB950; --down:#E5484D; --maintenance:#E3A008; --changeover:#A371F7;
+  --idle:#6E7681; --handedover:#39C5CF; --pending:#F0B72F; --pm:#5FB3A3;
+  --font-mono:'IBM Plex Mono', 'SF Mono', Consolas, monospace; --font-body:'Inter', system-ui, sans-serif;
+}
+*{box-sizing:border-box;}
+.pst-root{background:var(--bg); color:var(--text); font-family:var(--font-body); min-height:100vh; padding:0 0 40px 0; -webkit-font-smoothing:antialiased;}
+.pst-topbar{position:sticky; top:0; z-index:20; background:linear-gradient(180deg, var(--panel) 0%, var(--panel) 85%, transparent 100%); border-bottom:1px solid var(--border); padding:14px 16px 10px 16px;}
+.pst-title-row{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+.pst-title{font-family:var(--font-mono); font-weight:700; font-size:15px; letter-spacing:0.5px;}
+.pst-title small{display:block; font-family:var(--font-body); font-weight:400; color:var(--text-dim); font-size:11px; margin-top:2px;}
+.pst-role-select{background:var(--panel-alt); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-family:var(--font-body); font-size:12.5px; font-weight:600; max-width:230px;}
+.pst-shift-ribbon{margin-top:12px;}
+.pst-shift-track{position:relative; height:8px; border-radius:4px; background:var(--panel-alt); border:1px solid var(--border); overflow:hidden;}
+.pst-shift-fill{position:absolute; top:0; left:0; bottom:0; background:var(--accent); opacity:0.55;}
+.pst-shift-labels{display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:10.5px; color:var(--text-dim); margin-top:4px;}
+.pst-shift-note{font-size:11px; color:var(--accent-bright); margin-top:3px; font-family:var(--font-mono);}
+.pst-tabs{display:flex; gap:6px; margin-top:12px; overflow-x:auto; padding-bottom:2px;}
+.pst-tab-btn{background:transparent; border:1px solid var(--border); color:var(--text-dim); padding:7px 13px; border-radius:20px; font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer; font-family:var(--font-body); transition:all .15s ease;}
+.pst-tab-btn.active{background:var(--accent); border-color:var(--accent); color:#0C1216;}
+.pst-main{padding:16px; max-width:960px; margin:0 auto;}
+.pst-bay-title{font-family:var(--font-mono); font-size:12px; text-transform:uppercase; letter-spacing:1.2px; color:var(--text-dim); margin:22px 0 10px 0; display:flex; align-items:center; gap:8px;}
+.pst-bay-title:first-child{margin-top:4px;}
+.pst-bay-title::after{content:''; flex:1; height:1px; background:var(--border);}
+.pst-grid{display:grid; grid-template-columns:1fr; gap:10px;}
+@media(min-width:640px){.pst-grid{grid-template-columns:repeat(auto-fill, minmax(220px,1fr));}}
+.pst-card{background:var(--panel); border:1px solid var(--border); border-left:4px solid var(--status-color, var(--idle)); border-radius:10px; padding:12px 13px; cursor:pointer; transition:transform .12s ease, border-color .12s ease;}
+.pst-card:hover{transform:translateY(-1px); border-color:var(--accent);}
+.pst-card-top{display:flex; justify-content:space-between; align-items:flex-start; gap:6px;}
+.pst-card-name{font-family:var(--font-mono); font-weight:700; font-size:14px;}
+.pst-dot{width:9px; height:9px; border-radius:50%; background:var(--status-color, var(--idle)); flex-shrink:0; margin-top:3px;}
+.pst-dot.pulse{animation:pst-pulse 1.4s infinite;}
+@keyframes pst-pulse{0%{box-shadow:0 0 0 0 rgba(229,72,77,.55);}70%{box-shadow:0 0 0 7px rgba(229,72,77,0);}100%{box-shadow:0 0 0 0 rgba(229,72,77,0);}}
+.pst-status-label{font-size:11.5px; font-weight:600; color:var(--status-color, var(--idle)); margin-top:6px;}
+.pst-since{font-size:10.5px; color:var(--text-dim); font-family:var(--font-mono); margin-top:2px;}
+.pst-card-detail{font-size:11.5px; margin-top:7px; color:var(--text); background:var(--panel-alt); border-radius:6px; padding:6px 8px;}
+.pst-card-detail div{margin-bottom:2px;}
+.pst-card-detail b{color:var(--text-dim); font-weight:600;}
+.pst-badge{display:inline-block; margin-top:7px; margin-right:5px; font-size:9.5px; font-weight:700; letter-spacing:0.4px; padding:2px 7px; border-radius:5px;}
+.pst-badge-pending{border:1px dashed var(--pending); color:var(--pending);}
+.pst-badge-handoff{border:1px dashed var(--changeover); color:var(--changeover);}
+.pst-badge-prod{border:1px dashed var(--handedover); color:var(--handedover);}
+.pst-badge-ongoing{border:1px dashed var(--down); color:var(--down);}
+.pst-badge-assigned{border:1px dashed var(--idle); color:var(--text-dim);}
+.pst-badge-pm{border:1px dashed var(--pm); color:var(--pm);}
+.pst-badge-notcompleted{background:var(--down); color:#0C1216;}
+.pst-overlay{position:fixed; inset:0; background:rgba(10,13,16,0.72); z-index:50; display:flex; align-items:flex-end; justify-content:center;}
+@media(min-width:640px){.pst-overlay{align-items:center;}}
+.pst-modal{background:var(--panel); border:1px solid var(--border); width:100%; max-width:480px; max-height:88vh; overflow-y:auto; border-radius:16px 16px 0 0; padding:20px;}
+@media(min-width:640px){.pst-modal{border-radius:16px;}}
+.pst-modal-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;}
+.pst-modal-title{font-family:var(--font-mono); font-weight:700; font-size:17px;}
+.pst-close{background:none; border:none; color:var(--text-dim); font-size:20px; cursor:pointer; line-height:1;}
+.pst-field-label{font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-dim); margin-bottom:5px; font-weight:600; margin-top:10px;}
+.pst-field-label:first-child{margin-top:0;}
+.pst-select, .pst-textarea, .pst-input{width:100%; background:var(--panel-alt); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:9px 10px; font-family:var(--font-body); font-size:13.5px; margin-bottom:8px;}
+.pst-textarea{min-height:55px; resize:vertical;}
+.pst-btn{border:none; border-radius:8px; padding:10px 16px; font-weight:700; font-size:13px; cursor:pointer; font-family:var(--font-body); width:100%; margin-bottom:8px;}
+.pst-btn-primary{background:var(--accent); color:#0C1216;}
+.pst-btn-secondary{background:var(--panel-alt); color:var(--text); border:1px solid var(--border);}
+.pst-btn-danger{background:transparent; color:var(--down); border:1px solid var(--down);}
+.pst-btn-warn{background:transparent; color:var(--changeover); border:1px solid var(--changeover);}
+.pst-btn-go{background:var(--running); color:#0C1216;}
+.pst-btn-sm{width:auto; padding:7px 12px; font-size:12px;}
+.pst-row{display:flex; gap:8px;}
+.pst-row > *{flex:1;}
+.pst-divider{height:1px; background:var(--border); margin:14px 0;}
+.pst-info-line{display:flex; justify-content:space-between; font-size:12.5px; padding:5px 0; border-bottom:1px dashed var(--border); color:var(--text-dim); gap:10px;}
+.pst-info-line b{color:var(--text); font-weight:600; text-align:right;}
+.pst-parts-list{list-style:none; padding:0; margin:0 0 10px 0;}
+.pst-parts-list li{font-size:12.5px; padding:5px 8px; background:var(--panel-alt); border-radius:6px; margin-bottom:5px; font-family:var(--font-mono);}
+.pst-empty{color:var(--text-dim); font-size:12.5px; font-style:italic; padding:8px 0;}
+.pst-note-box{background:var(--panel-alt); border-radius:8px; padding:9px 10px; font-size:12.5px; margin:6px 0 10px 0;}
+.pst-note-box b{color:var(--accent-bright);}
+.pst-note-fulfilled{border:1px solid var(--running);}
+.pst-req-item{background:var(--panel-alt); border-radius:8px; padding:8px 10px; font-size:12px; margin-bottom:6px;}
+.pst-req-item b{color:var(--accent-bright); font-family:var(--font-mono);}
+.pst-req-open{border:1px dashed var(--pending);}
+.pst-queue-item{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; cursor:pointer;}
+.pst-queue-tag{font-size:9.5px; font-weight:700; letter-spacing:0.4px; padding:2px 7px; border-radius:5px; margin-right:6px;}
+.pst-section-title{font-family:var(--font-mono); font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:var(--accent-bright); margin:20px 0 8px 0;}
+.pst-report-tabs{display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;}
+.pst-kpi-row{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:16px;}
+.pst-kpi-box{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 10px; text-align:center;}
+.pst-kpi-num{font-family:var(--font-mono); font-size:19px; font-weight:700;}
+.pst-kpi-label{font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-top:3px;}
+.pst-table{width:100%; border-collapse:collapse; font-size:12px;}
+.pst-table th{text-align:left; color:var(--text-dim); font-weight:600; font-size:10.5px; text-transform:uppercase; padding:6px 8px; border-bottom:1px solid var(--border);}
+.pst-table td{padding:7px 8px; border-bottom:1px solid var(--border); font-family:var(--font-mono);}
+.pst-table-wrap{overflow-x:auto; margin-bottom:18px; border:1px solid var(--border); border-radius:10px;}
+.pst-badge-repeat{background:rgba(229,72,77,0.15); color:var(--down); font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:5px;}
+.pst-toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--panel-alt); border:1px solid var(--accent); color:var(--text); padding:10px 18px; border-radius:20px; font-size:12.5px; font-weight:600; z-index:100; box-shadow:0 4px 20px rgba(0,0,0,0.4); text-align:center; max-width:90%;}
+.pst-target-warn{color:var(--down);}
+.pst-target-ok{color:var(--running);}
+.pst-copy-btn{background:var(--panel-alt); border:1px solid var(--border); color:var(--accent-bright); font-size:11.5px; padding:7px 12px; border-radius:8px; cursor:pointer; font-family:var(--font-body); font-weight:600; margin-right:8px; margin-bottom:8px;}
+.pst-incident-card{background:var(--panel-alt); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:12.5px;}
+.pst-incident-head{display:flex; justify-content:space-between; font-family:var(--font-mono); font-weight:700; margin-bottom:4px;}
+</style>
+</head>
+<body>
+<div id="pst-root" class="pst-root"></div>
+<script>
+
+(function(){
+  document.title = 'EIG Plant Status Tracker';
+  const BAYS = [
+    {name:'Extrusion Bay', machines:['Line 1','Line 2','Line 3','Line 4','Line 6','Line 12','Line 14','Line 15','Line 16','Line 17']},
+    {name:'Injection Bay', machines:['H160','H320A','H320B','H650','KM1000','KM150A','KM150B','KM300A','KM300B','KM350A','KM350B','KM500','KM550']},
+    {name:'Rotational / Auxiliary', machines:['Arm 1','Arm 2','Arm 3']}
+  ];
+  const ALL_MACHINES = BAYS.flatMap(b=>b.machines);
+  const REASON_CODES = ['Mechanical Failure','Electrical Fault','Waiting on Parts','No Operator','Process/Quality Issue','Preventive Maintenance','Other'];
+  const STATUS_COLOR_VAR = {'Running':'--running','Down':'--down','Handed Over':'--handedover','Idle':'--idle','Changeover':'--changeover'};
+  const TEAMS = {
+    'E&I': { supervisor:'S.Ali', members:['S.Ali','M.Thompson','O.Brown','L.Bridgewater'] },
+    'Mechanical': { supervisor:'F.Hyland', members:['F.Hyland','S.Ragoonath','K.Kistow','N.Debisette','R.Dass'] }
+  };
+  const PEOPLE = [
+    {id:'s-ali', shortName:'S.Ali', label:'S.Ali — Supervisor (E&I)', type:'supervisor', team:'E&I'},
+    {id:'m-thompson', shortName:'M.Thompson', label:'M.Thompson — Tech 2 (E&I)', type:'technician', team:'E&I'},
+    {id:'o-brown', shortName:'O.Brown', label:'O.Brown — Tech 1 (E&I)', type:'technician', team:'E&I'},
+    {id:'l-bridgewater', shortName:'L.Bridgewater', label:'L.Bridgewater — Tech 1 (E&I)', type:'technician', team:'E&I'},
+    {id:'f-hyland', shortName:'F.Hyland', label:'F.Hyland — Supervisor (Mechanical)', type:'supervisor', team:'Mechanical'},
+    {id:'s-ragoonath', shortName:'S.Ragoonath', label:'S.Ragoonath — Senior Mech Tech (Mechanical)', type:'technician', team:'Mechanical'},
+    {id:'k-kistow', shortName:'K.Kistow', label:'K.Kistow — Tech 2 (Mechanical)', type:'technician', team:'Mechanical'},
+    {id:'n-debisette', shortName:'N.Debisette', label:'N.Debisette — Tech 1 (Mechanical)', type:'technician', team:'Mechanical'},
+    {id:'r-dass', shortName:'R.Dass', label:'R.Dass — Welder (Mechanical)', type:'technician', team:'Mechanical'},
+    {id:'prod-sup', shortName:'Production Supervisor', label:'Production Supervisor', type:'production', team:null},
+    {id:'manager', shortName:'Manager', label:'Manager (You)', type:'manager', team:null}
+  ];
+  const STORAGE_KEY = 'plant-status-tracker-data-v6';
+  const DAY_MS = 86400000;
+
+  let data = null;
+  let currentPersonId = 'manager';
+  let activeTab = 'dashboard';
+  let modalMachine = null;
+  let reportPeriod = 'daily';
+  let reportMachineFilter = 'all';
+  let toastMsg = null; let toastTimer = null;
+  let pendingAuthPersonId = null;
+  let authError = false;
+  const unlockedPersonIds = new Set(['manager']);
+
+  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+  function now(){ return new Date().toISOString(); }
+  function fmtTime(iso){ if(!iso) return '—'; const d=new Date(iso); return d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  function fmtHM(hours){ if(hours==null||isNaN(hours)) return '—'; const h=Math.floor(hours); const m=Math.round((hours-h)*60); return h+'h '+(m<10?'0':'')+m+'m'; }
+  function hoursBetween(a,b){ return (new Date(b)-new Date(a))/3600000; }
+  function me(){ return PEOPLE.find(p=>p.id===currentPersonId); }
+  function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function showToast(msg){ toastMsg=msg; render(); clearTimeout(toastTimer); toastTimer=setTimeout(()=>{toastMsg=null; render();},2400); }
+  function reasonCodesFor(team){
+    if(team==='E&I') return REASON_CODES.filter(r=> r!=='Mechanical Failure');
+    if(team==='Mechanical') return REASON_CODES.filter(r=> r!=='Electrical Fault');
+    return REASON_CODES;
+  }
+
+  function defaultData(){
+    const machines = {};
+    ALL_MACHINES.forEach(name=>{ machines[name] = { status:'Running', statusSince: now(), job:null, changeoverStart:null }; });
+    return { machines, incidents:[], changeovers:[], events:[], settings:{downtimeTargetPct:5}, passwords:{} };
+  }
+
+  function logEvent(machine, action, detail){ data.events.unshift({ id:uid(), at:now(), actor:me().label, machine, action, detail: detail||{} }); }
+
+  async function loadData(){
+    try{
+      const res = await fetch('/api/plant-data');
+      const json = await res.json();
+      if(json && json.value){ data = JSON.parse(json.value); if(!data.passwords) data.passwords = {}; if(!data.settings || data.settings.downtimeTargetPct==null) data.settings = {downtimeTargetPct:5}; } else { data = defaultData(); await saveData(); }
+    }catch(e){ data = defaultData(); await saveData(); }
+    render();
+  }
+  async function saveData(){
+    try{
+      const res = await fetch('/api/plant-data', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({value: JSON.stringify(data)}) });
+      if(!res.ok) throw new Error('bad status');
+    }
+    catch(e){ showToast('Save failed - check connection'); }
+  }
+  function persist(){ saveData(); render(); }
+
+  // ---------- business logic ----------
+  function checkRepeat(machine, reasonCode, atIso){
+    const cutoff = new Date(atIso).getTime() - 7*DAY_MS;
+    return data.incidents.some(inc => inc.machine===machine && inc.reasonCode===reasonCode && new Date(inc.handedOverAt).getTime() >= cutoff);
+  }
+
+  function closeIncidentIfOpen(machine, newStatus){
+    const m = data.machines[machine];
+    if(m.status==='Down' && m.job){
+      const j = m.job;
+      const handedOverAt = now();
+      const isPM = j.reasonCode==='Preventive Maintenance';
+      const isRepeat = !isPM && checkRepeat(machine, j.reasonCode, handedOverAt);
+      data.incidents.push({
+        id:uid(), machine, reasonCode:j.reasonCode, team:j.team, assignedTo:j.assignedTo,
+        breakdownDetails:j.breakdownDetails||'', intendedResolution:j.intendedResolution||'',
+        requisitions:j.requisitions||[], partRequests:j.partRequests||[],
+        downStart:j.downStart, workStartedAt:j.workStartedAt||null, handedOverAt,
+        workDoneNote:j.workDoneNote||null, isRepeat, isPM
+      });
+      m.job = null;
+    }
+    if(m.status==='Changeover' && newStatus!=='Changeover'){
+      data.changeovers.push({ machine, start:m.changeoverStart, end:now() });
+      m.changeoverStart = null;
+    }
+  }
+
+  function setSimpleStatus(machine, newStatus){
+    const m = data.machines[machine];
+    const prev = m.status;
+    closeIncidentIfOpen(machine, newStatus);
+    if(newStatus==='Changeover') m.changeoverStart = now();
+    m.status = newStatus; m.statusSince = now();
+    logEvent(machine,'status_changed',{from:prev, to:newStatus});
+    showToast(machine+' set to '+newStatus);
+    modalMachine = null;
+    persist();
+  }
+
+  function setDown(machine, reasonCode, assignedTo, breakdownDetails, intendedResolution, reqNumber, partsRequired){
+    const m = data.machines[machine];
+    closeIncidentIfOpen(machine, 'Down');
+    const team = me().team;
+    const requisitions = [];
+    if(reqNumber && reqNumber.trim()){
+      requisitions.push({reqNumber:reqNumber.trim(), items:partsRequired||'', issuedBy:me().shortName, issuedAt:now()});
+    }
+    m.job = {
+      reasonCode, team, assignedTo, breakdownDetails: breakdownDetails||'', intendedResolution: intendedResolution||'',
+      requisitions, partRequests: [],
+      downStart: now(), workStartedAt:null, workDoneNote:null, notCompletedReason:null, jobStatus:'Assigned',
+      handoffNote:null, handoffFrom:null
+    };
+    m.status = 'Down'; m.statusSince = now();
+    logEvent(machine,'set_down',{reasonCode, team, assignedTo});
+    showToast(machine+' set Down - assigned to '+assignedTo);
+    modalMachine = null;
+    persist();
+  }
+
+  function techStartWork(machine){
+    const j = data.machines[machine].job; if(!j || j.jobStatus!=='Assigned') return;
+    j.workStartedAt = now();
+    j.jobStatus = 'Ongoing';
+    logEvent(machine,'work_started',{});
+    showToast('Work started - timer running');
+    persist();
+  }
+
+  // Adding a requisition auto-populates parts utilized (the items themselves)
+  // and auto-fulfills any currently open technician parts requests on this job.
+  function addRequisition(machine, reqNumber, items){
+    const j = data.machines[machine].job; if(!j || !reqNumber || !reqNumber.trim()) { showToast('Enter a req number'); return; }
+    const reqNum = reqNumber.trim();
+    j.requisitions.push({reqNumber:reqNum, items:items||'', issuedBy:me().shortName, issuedAt:now()});
+    let fulfilledAny = false;
+    (j.partRequests||[]).forEach(r=>{ if(!r.fulfilled){ r.fulfilled = true; r.fulfilledReqNumber = reqNum; fulfilledAny = true; } });
+    logEvent(machine,'requisition_added',{reqNumber:reqNum, items});
+    showToast('Requisition '+reqNum+' added'+(fulfilledAny?' - technician notified':''));
+    persist();
+  }
+
+  function requestParts(machine, text){
+    const j = data.machines[machine].job; if(!j || !text || !text.trim()) { showToast('Describe what you need'); return; }
+    j.partRequests.push({id:uid(), requestedBy:me().shortName, requestText:text.trim(), requestedAt:now(), fulfilled:false, fulfilledReqNumber:null});
+    logEvent(machine,'parts_requested',{request:text.trim()});
+    showToast('Parts request sent to supervisor');
+    persist();
+  }
+
+  function updateReason(machine, reasonCode){
+    const j = data.machines[machine].job; if(!j) return;
+    j.reasonCode = reasonCode;
+    logEvent(machine,'reason_updated',{reasonCode});
+    showToast('Reason updated');
+    persist();
+  }
+
+  function reassignJob(machine, assignedTo){
+    const j = data.machines[machine].job; if(!j) return;
+    j.assignedTo = assignedTo;
+    if(['Unassigned','Job Completed','Not Completed'].includes(j.jobStatus)) j.jobStatus = 'Assigned';
+    logEvent(machine,'assigned',{assignedTo});
+    showToast(machine+' assigned to '+assignedTo);
+    persist();
+  }
+
+  function submitJobCompleted(machine, note){
+    const j = data.machines[machine].job; if(!j) return;
+    j.workDoneNote = note;
+    j.jobStatus = 'Job Completed';
+    logEvent(machine,'job_completed',{note});
+    showToast('Job marked completed - sent for approval');
+    modalMachine = null;
+    persist();
+  }
+
+  function submitJobNotCompleted(machine, reason){
+    const j = data.machines[machine].job; if(!j) return;
+    if(!reason || !reason.trim()){ showToast('A reason is required'); return; }
+    j.notCompletedReason = reason.trim();
+    j.jobStatus = 'Not Completed';
+    logEvent(machine,'job_not_completed',{reason:reason.trim()});
+    showToast('Marked Not Completed - supervisor notified');
+    modalMachine = null;
+    persist();
+  }
+
+  function resumeWork(machine){
+    const j = data.machines[machine].job; if(!j) return;
+    j.jobStatus = 'Ongoing';
+    logEvent(machine,'resumed',{});
+    showToast('Sent back to technician');
+    persist();
+  }
+
+  function approveHandedOver(machine){ setSimpleStatus(machine,'Handed Over'); }
+
+  function handoffJob(machine, note, newReasonCode){
+    const m = data.machines[machine]; const j = m.job; if(!j) return;
+    const fromTeam = j.team;
+    const toTeam = fromTeam==='E&I' ? 'Mechanical' : 'E&I';
+    j.handoffFrom = me().shortName+' ('+fromTeam+')';
+    j.handoffNote = note || '';
+    j.team = toTeam;
+    j.assignedTo = null;
+    j.jobStatus = 'Unassigned';
+    if(newReasonCode) j.reasonCode = newReasonCode;
+    logEvent(machine,'handoff',{from:fromTeam, to:toTeam, note});
+    showToast(machine+' handed off to '+toTeam+' team');
+    modalMachine = null;
+    persist();
+  }
+
+  function saveSettings(pct){
+    data.settings = { downtimeTargetPct:Number(pct)||0 };
+    showToast('Settings saved');
+    persist();
+  }
+
+  function resetDemoData(){
+    if(!confirm('Reset all tracker data? This clears every machine, incident and event for everyone testing this artifact.')) return;
+    data = defaultData();
+    showToast('Demo data reset');
+    persist();
+  }
+
+  function clearHistory(){
+    if(!confirm('Clear all history? This permanently deletes incidents, changeovers and the activity log. Current machine statuses and any jobs in progress are kept as-is. Make sure you have copied/downloaded any reports you need first - this cannot be undone.')) return;
+    data.incidents = [];
+    data.changeovers = [];
+    data.events = [];
+    showToast('History cleared - current statuses kept');
+    persist();
+  }
+
+  function savePasswords(newPasswords){
+    data.passwords = newPasswords;
+    showToast('Passwords saved');
+    persist();
+  }
+
+  function checkPassword(personId, attempt){
+    const pw = data.passwords[personId];
+    if(!pw) return true;
+    return attempt === pw;
+  }
+
+  // ---------- report calculations ----------
+  function periodRange(period){
+    const end = new Date(); let start;
+    if(period==='daily'){ start = new Date(end.getFullYear(), end.getMonth(), end.getDate()); }
+    else if(period==='weekly'){ start = new Date(end.getTime()-7*DAY_MS); }
+    else if(period==='monthly'){ start = new Date(end.getTime()-30*DAY_MS); }
+    else { start = new Date(0); }
+    return {start,end};
+  }
+
+  function daysInPeriod(period, start, end){
+    if(period==='daily') return 1;
+    if(period==='weekly') return 7;
+    if(period==='monthly') return 30;
+    const earliest = data.events.length ? new Date(data.events[data.events.length-1].at) : end;
+    return Math.max(1, Math.ceil((end-earliest)/DAY_MS));
+  }
+
+  function buildReport(period){
+    const {start,end} = periodRange(period);
+    const inRange = iso => iso && new Date(iso)>=start && new Date(iso)<=end;
+    const perMachine = {};
+    ALL_MACHINES.forEach(name=>{ perMachine[name] = {downtimeHrs:0, changeoverHrs:0, pmHrs:0, incidentsCount:0, parts:[], repeats:0, reqNumbers:[]}; });
+    data.incidents.forEach(inc=>{
+      if(inRange(inc.handedOverAt)){
+        const dur = hoursBetween(inc.downStart, inc.handedOverAt);
+        if(inc.isPM){ perMachine[inc.machine].pmHrs += dur; }
+        else {
+          perMachine[inc.machine].downtimeHrs += dur;
+          perMachine[inc.machine].incidentsCount += 1;
+          if(inc.isRepeat) perMachine[inc.machine].repeats += 1;
+        }
+        (inc.requisitions||[]).forEach(r=>{ if(r.items) perMachine[inc.machine].parts.push(r.items); perMachine[inc.machine].reqNumbers.push(r.reqNumber); });
+      }
+    });
+    data.changeovers.forEach(c=>{ if(inRange(c.end)) perMachine[c.machine].changeoverHrs += hoursBetween(c.start,c.end); });
+
+    const reliability = {};
+    ALL_MACHINES.forEach(name=>{
+      const incs = data.incidents.filter(i=>i.machine===name && !i.isPM).sort((a,b)=>new Date(a.downStart)-new Date(b.downStart));
+      let mttr=null, mtbf=null, availability=null;
+      if(incs.length>0) mttr = incs.reduce((s,i)=>s+hoursBetween(i.downStart,i.handedOverAt),0)/incs.length;
+      if(incs.length>=2){ let gaps=[]; for(let i=1;i<incs.length;i++){ gaps.push(hoursBetween(incs[i-1].handedOverAt, incs[i].downStart)); } mtbf = gaps.reduce((s,g)=>s+g,0)/gaps.length; }
+      if(mtbf!=null && mttr!=null && (mtbf+mttr)>0) availability = (mtbf/(mtbf+mttr))*100;
+      reliability[name] = {mttr,mtbf,availability,sampleSize:incs.length};
+    });
+
+    const totalDowntime = Object.values(perMachine).reduce((s,m)=>s+m.downtimeHrs,0);
+    const totalChangeover = Object.values(perMachine).reduce((s,m)=>s+m.changeoverHrs,0);
+    const totalPM = Object.values(perMachine).reduce((s,m)=>s+m.pmHrs,0);
+    const openIssues = ALL_MACHINES.filter(name=> data.machines[name].status==='Down');
+    const ranked = ALL_MACHINES.slice().sort((a,b)=>perMachine[b].downtimeHrs-perMachine[a].downtimeHrs);
+    const worstOffender = perMachine[ranked[0]].downtimeHrs>0 ? ranked[0] : null;
+    const days = daysInPeriod(period, start, end);
+    const totalAvailableHrs = ALL_MACHINES.length * 24 * days;
+    const targetPct = data.settings.downtimeTargetPct;
+    const targetHrs = totalAvailableHrs * (targetPct/100);
+    const actualPct = totalAvailableHrs>0 ? (totalDowntime/totalAvailableHrs)*100 : 0;
+    return {perMachine, reliability, totalDowntime, totalChangeover, totalPM, openIssues, worstOffender, totalAvailableHrs, targetPct, targetHrs, actualPct, days};
+  }
+
+  function reportAsText(period){
+    const r = buildReport(period);
+    const label = period.charAt(0).toUpperCase()+period.slice(1);
+    let lines = [];
+    lines.push('EIG MAINTENANCE - '+label.toUpperCase()+' DOWNTIME REPORT');
+    lines.push('Generated: '+fmtTime(now()));
+    lines.push('Total unplanned downtime: '+fmtHM(r.totalDowntime)+' = '+r.actualPct.toFixed(2)+'% of available time (target: '+r.targetPct.toFixed(1)+'%, '+fmtHM(r.targetHrs)+')');
+    lines.push('Total changeover time: '+fmtHM(r.totalChangeover));
+    lines.push('Total PM time (excluded from downtime KPI): '+fmtHM(r.totalPM));
+    if(r.worstOffender) lines.push('Worst offender: '+r.worstOffender+' ('+fmtHM(r.perMachine[r.worstOffender].downtimeHrs)+')');
+    lines.push(''); lines.push('OPEN / UNRESOLVED ISSUES CARRIED FORWARD:');
+    lines.push(r.openIssues.length ? r.openIssues.join(', ') : 'None');
+    lines.push(''); lines.push('PER-MACHINE SUMMARY:');
+    ALL_MACHINES.forEach(name=>{
+      const pm=r.perMachine[name]; const rel=r.reliability[name]; const st=data.machines[name].status;
+      lines.push('- '+name+' | Status: '+st+' | Downtime: '+fmtHM(pm.downtimeHrs)+' | Changeover: '+fmtHM(pm.changeoverHrs)+' | PM: '+fmtHM(pm.pmHrs)+
+        ' | Availability: '+(rel.availability!=null?rel.availability.toFixed(1)+'%':'n/a')+(pm.repeats>0?' | REPEAT FAILURES: '+pm.repeats:''));
+    });
+    return lines.join('\n');
+  }
+  function copyReport(period){ navigator.clipboard.writeText(reportAsText(period)).then(()=>showToast('Report copied - paste into an email')).catch(()=>showToast('Copy failed')); }
+  function downloadReport(period){
+    const blob = new Blob([reportAsText(period)], {type:'text/plain'});
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href=url; a.download='eig-'+period+'-downtime-report.txt'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+
+  // ---------- rendering ----------
+  function statusColorVar(status){ return 'var('+(STATUS_COLOR_VAR[status]||'--idle')+')'; }
+
+  function renderShiftRibbon(){
+    const nowD = new Date();
+    const startShift = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate(),8,0,0);
+    const endShift = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate(),16,0,0);
+    let elapsed = (nowD-startShift)/60000; elapsed = Math.max(0, Math.min(480, elapsed));
+    const pct = (elapsed/480)*100;
+    let note;
+    if(nowD<startShift) note='Shift starts at 08:00';
+    else if(nowD<=endShift) note='Report due at 16:00 - '+fmtHM((endShift-nowD)/3600000)+' remaining';
+    else note='Shift ended - daily report should be finalized before 08:00 tomorrow';
+    return '<div class="pst-shift-ribbon"><div class="pst-shift-track"><div class="pst-shift-fill" style="width:'+pct+'%"></div></div>'+
+      '<div class="pst-shift-labels"><span>08:00</span><span>16:00</span></div><div class="pst-shift-note">'+note+'</div></div>';
+  }
+
+  function tabsForRole(){
+    const role = me().type;
+    const tabs = [{id:'dashboard', label:'Dashboard'}];
+    if(role==='technician') tabs.push({id:'myjobs', label:'My Jobs'});
+    if(role==='supervisor') tabs.push({id:'teamqueue', label:'Team Queue'});
+    if(role==='production') tabs.push({id:'restartqueue', label:'Restart Queue'});
+    if(role==='supervisor' || role==='manager') tabs.push({id:'reports', label:'Reports'});
+    if(role==='supervisor' || role==='manager') tabs.push({id:'activity', label:'Activity Log'});
+    if(role==='manager') tabs.push({id:'settings', label:'Settings'});
+    return tabs;
+  }
+  function renderTabs(){
+    const tabs = tabsForRole();
+    if(!tabs.find(t=>t.id===activeTab)) activeTab='dashboard';
+    return '<div class="pst-tabs">'+tabs.map(t=>'<button class="pst-tab-btn'+(activeTab===t.id?' active':'')+'" data-tab="'+t.id+'">'+t.label+'</button>').join('')+'</div>';
+  }
+  function renderTopbar(){
+    const options = PEOPLE.map(p=>'<option value="'+p.id+'"'+(p.id===currentPersonId?' selected':'')+'>'+p.label+'</option>').join('');
+    return '<div class="pst-topbar"><div class="pst-title-row">'+
+      '<div class="pst-title">EIG PLANT STATUS TRACKER<small>Extrusion · Injection · Rotational - Downtime KPI Pilot</small></div>'+
+      '<select id="pst-role-select" class="pst-role-select">'+options+'</select></div>'+
+      renderShiftRibbon()+renderTabs()+'</div>';
+  }
+
+  function jobStatusBadge(j){
+    if(!j) return '';
+    if(j.jobStatus==='Unassigned') return '<span class="pst-badge pst-badge-handoff">NEEDS ASSIGNMENT</span>';
+    if(j.jobStatus==='Job Completed') return '<span class="pst-badge pst-badge-pending">PENDING APPROVAL</span>';
+    if(j.jobStatus==='Not Completed') return '<span class="pst-badge pst-badge-notcompleted">NOT COMPLETED</span>';
+    if(j.jobStatus==='Ongoing') return '<span class="pst-badge pst-badge-ongoing">IN PROGRESS</span>';
+    if(j.jobStatus==='Assigned') return '<span class="pst-badge pst-badge-assigned">ASSIGNED</span>';
+    return '';
+  }
+
+  function renderMachineCard(name){
+    const m = data.machines[name];
+    const color = statusColorVar(m.status);
+    const sinceHrs = hoursBetween(m.statusSince, now());
+    let html = '<div class="pst-card" style="--status-color:'+color+'" data-machine="'+name+'">'+
+      '<div class="pst-card-top"><div class="pst-card-name">'+name+'</div><div class="pst-dot'+(m.status==='Down'?' pulse':'')+'"></div></div>'+
+      '<div class="pst-status-label">'+m.status+'</div>'+
+      '<div class="pst-since">'+fmtHM(sinceHrs)+' in status</div>';
+    if(m.status==='Down' && m.job){
+      const j = m.job;
+      html += '<div class="pst-card-detail">'+
+        '<div><b>Reason:</b> '+(j.reasonCode||'—')+'</div>'+
+        '<div><b>Assigned:</b> '+(j.assignedTo || 'Unassigned')+' ('+j.team+')</div>'+
+      '</div>';
+      if(j.reasonCode==='Preventive Maintenance') html += '<span class="pst-badge pst-badge-pm">PM</span>';
+      html += jobStatusBadge(j);
+    }
+    if(m.status==='Handed Over') html += '<span class="pst-badge pst-badge-prod">AWAITING PRODUCTION RESTART</span>';
+    html += '</div>';
+    return html;
+  }
+
+  function renderDashboard(){
+    let html='';
+    BAYS.forEach(bay=>{
+      html += '<div class="pst-bay-title">'+bay.name+'</div><div class="pst-grid">';
+      bay.machines.forEach(n=> html += renderMachineCard(n));
+      html += '</div>';
+    });
+    return html;
+  }
+
+  function renderMyJobs(){
+    const mine = ALL_MACHINES.filter(n=> data.machines[n].job && data.machines[n].job.assignedTo === me().shortName);
+    let html = '<div class="pst-section-title">Assigned To Me ('+mine.length+')</div>';
+    if(mine.length===0) html += '<div class="pst-empty">No machines currently assigned to you.</div>';
+    mine.forEach(n=> html += renderMachineCard(n));
+    return html;
+  }
+
+  function renderTeamQueue(){
+    const team = me().team;
+    const teamJobs = ALL_MACHINES.filter(n=>{ const m=data.machines[n]; return m.status==='Down' && m.job && m.job.team===team; });
+    const needsAssignment = teamJobs.filter(n=> data.machines[n].job.jobStatus==='Unassigned');
+    const awaitingApproval = teamJobs.filter(n=> data.machines[n].job.jobStatus==='Job Completed');
+    const needsAttention = teamJobs.filter(n=> data.machines[n].job.jobStatus==='Not Completed');
+    const inProgress = teamJobs.filter(n=> ['Assigned','Ongoing'].includes(data.machines[n].job.jobStatus));
+    function block(title, list, tagLabel, tagColor){
+      let h = '<div class="pst-section-title">'+title+' ('+list.length+')</div>';
+      if(list.length===0) h += '<div class="pst-empty">None right now.</div>';
+      list.forEach(n=>{
+        const j = data.machines[n].job;
+        h += '<div class="pst-queue-item" data-open-machine="'+n+'">'+
+          '<span class="pst-queue-tag" style="background:'+tagColor+'22; color:'+tagColor+';">'+tagLabel+'</span>'+
+          '<b>'+n+'</b> - '+(j.reasonCode||'—')+'<br>'+
+          '<span style="color:var(--text-dim); font-size:11.5px;">'+(j.assignedTo?'Assigned: '+j.assignedTo:'Unassigned')+' · '+j.jobStatus+
+          (j.partRequests && j.partRequests.some(r=>!r.fulfilled) ? ' · Open parts request' : '')+
+          (j.handoffNote ? ' · Handed off from '+j.handoffFrom : '')+'</span>'+
+        '</div>';
+      });
+      return h;
+    }
+    let html = '';
+    html += block('Needs Assignment', needsAssignment, 'ASSIGN', 'var(--changeover)');
+    html += block('Awaiting My Approval', awaitingApproval, 'REVIEW', 'var(--pending)');
+    html += block('Needs Attention (Not Completed)', needsAttention, 'ATTENTION', 'var(--down)');
+    html += block('In Progress', inProgress, 'OPEN', 'var(--down)');
+    return html;
+  }
+
+  function renderRestartQueue(){
+    const ready = ALL_MACHINES.filter(n=> data.machines[n].status==='Handed Over');
+    let html = '<div class="pst-section-title">Awaiting Production Restart ('+ready.length+')</div>';
+    if(ready.length===0) html += '<div class="pst-empty">Nothing waiting on production right now.</div>';
+    ready.forEach(n=> html += renderMachineCard(n));
+    return html;
+  }
+
+  function renderBreakdownLog(machine){
+    const incs = data.incidents.filter(i=>i.machine===machine).sort((a,b)=>new Date(b.downStart)-new Date(a.downStart));
+    let html = '<div class="pst-section-title">Breakdown Log - '+machine+' ('+incs.length+')</div>';
+    if(incs.length===0){ html += '<div class="pst-empty">No logged incidents for this machine yet.</div>'; return html; }
+    incs.forEach(i=>{
+      const dur = hoursBetween(i.downStart, i.handedOverAt);
+      html += '<div class="pst-incident-card">'+
+        '<div class="pst-incident-head"><span>'+fmtTime(i.downStart)+'</span><span>'+fmtHM(dur)+'</span></div>'+
+        '<div class="pst-info-line"><span>Reason</span><b>'+i.reasonCode+(i.isPM?' (PM)':'')+(i.isRepeat?' 🔁 Repeat':'')+'</b></div>'+
+        '<div class="pst-info-line"><span>Assigned</span><b>'+(i.assignedTo||'—')+' ('+i.team+')</b></div>';
+      if(i.breakdownDetails) html += '<div class="pst-note-box"><b>Breakdown details:</b><br>'+escapeHtml(i.breakdownDetails)+'</div>';
+      if(i.intendedResolution) html += '<div class="pst-note-box"><b>Intended resolution:</b><br>'+escapeHtml(i.intendedResolution)+'</div>';
+      if(i.requisitions && i.requisitions.length){
+        html += '<div class="pst-note-box"><b>Requisitions / Parts Utilized:</b><br>'+i.requisitions.map(r=>escapeHtml(r.reqNumber)+' — '+escapeHtml(r.items||'')).join('<br>')+'</div>';
+      }
+      if(i.workDoneNote) html += '<div class="pst-note-box"><b>Work done:</b><br>'+escapeHtml(i.workDoneNote)+'</div>';
+      html += '</div>';
+    });
+    return html;
+  }
+
+  function renderReports(){
+    const r = buildReport(reportPeriod);
+    const periodLabel = {daily:'Today', weekly:'Last 7 Days', monthly:'Last 30 Days', all:'All Time'}[reportPeriod];
+    const targetExceeded = r.actualPct > r.targetPct;
+    let html = '<div class="pst-report-tabs">'+['daily','weekly','monthly','all'].map(p=>'<button class="pst-tab-btn'+(reportPeriod===p?' active':'')+'" data-report-period="'+p+'">'+(p==='all'?'All Time':p.charAt(0).toUpperCase()+p.slice(1))+'</button>').join('')+'</div>';
+    html += '<label class="pst-field-label">Filter by machine</label><select class="pst-select" id="pst-report-machine">'+
+      '<option value="all"'+(reportMachineFilter==='all'?' selected':'')+'>All Machines</option>'+
+      ALL_MACHINES.map(n=>'<option value="'+n+'"'+(reportMachineFilter===n?' selected':'')+'>'+n+'</option>').join('')+'</select>';
+    html += '<div style="margin-bottom:12px;"><button class="pst-copy-btn" data-copy-report="1">Copy report</button><button class="pst-copy-btn" data-download-report="1">Download .txt</button></div>';
+    html += '<div class="pst-kpi-row">'+
+      '<div class="pst-kpi-box"><div class="pst-kpi-num '+(targetExceeded?'pst-target-warn':'pst-target-ok')+'">'+r.actualPct.toFixed(2)+'%</div><div class="pst-kpi-label">Actual Downtime % ('+periodLabel+')</div></div>'+
+      '<div class="pst-kpi-box"><div class="pst-kpi-num">'+r.targetPct.toFixed(1)+'%</div><div class="pst-kpi-label">Target</div></div>'+
+      '<div class="pst-kpi-box"><div class="pst-kpi-num">'+fmtHM(r.totalDowntime)+'</div><div class="pst-kpi-label">Downtime Hours</div></div></div>';
+    html += '<div class="pst-kpi-row">'+
+      '<div class="pst-kpi-box"><div class="pst-kpi-num">'+fmtHM(r.totalChangeover)+'</div><div class="pst-kpi-label">Changeover Time</div></div>'+
+      '<div class="pst-kpi-box"><div class="pst-kpi-num">'+fmtHM(r.totalPM)+'</div><div class="pst-kpi-label">PM Time (excluded)</div></div>'+
+      '<div class="pst-kpi-box"><div class="pst-kpi-num">'+fmtHM(r.totalAvailableHrs)+'</div><div class="pst-kpi-label">Total Available Hrs</div></div></div>';
+    if(r.worstOffender && reportPeriod!=='daily') html += '<div class="pst-section-title">Trend</div><div style="font-size:13px; margin-bottom:10px;">Worst-offending machine this period: <b>'+r.worstOffender+'</b> ('+fmtHM(r.perMachine[r.worstOffender].downtimeHrs)+')</div>';
+    html += '<div class="pst-section-title">Unresolved / Carried Forward</div>';
+    html += r.openIssues.length ? '<div style="font-size:13px; margin-bottom:14px;">'+r.openIssues.join(', ')+'</div>' : '<div class="pst-empty">None - all machines resolved.</div>';
+
+    if(reportMachineFilter==='all'){
+      html += '<div class="pst-section-title">Per-Machine Summary</div><div class="pst-table-wrap"><table class="pst-table"><thead><tr><th>Machine</th><th>Status</th><th>Downtime</th><th>Changeover</th><th>PM</th><th>Availability</th><th>Flags</th></tr></thead><tbody>';
+      ALL_MACHINES.forEach(name=>{
+        const pm=r.perMachine[name]; const rel=r.reliability[name];
+        html += '<tr><td>'+name+'</td><td>'+data.machines[name].status+'</td><td>'+fmtHM(pm.downtimeHrs)+'</td><td>'+fmtHM(pm.changeoverHrs)+'</td><td>'+fmtHM(pm.pmHrs)+'</td>'+
+          '<td>'+(rel.availability!=null?rel.availability.toFixed(1)+'%':'n/a')+'</td>'+
+          '<td>'+(pm.repeats>0?'<span class="pst-badge-repeat">REPEAT x'+pm.repeats+'</span>':'—')+'</td></tr>';
+      });
+      html += '</tbody></table></div>';
+      const allParts = []; ALL_MACHINES.forEach(name=> r.perMachine[name].parts.forEach(p=> allParts.push(name+': '+p)));
+      html += '<div class="pst-section-title">Parts Utilized ('+periodLabel+')</div>';
+      html += allParts.length ? '<ul class="pst-parts-list">'+allParts.map(p=>'<li>'+escapeHtml(p)+'</li>').join('')+'</ul>' : '<div class="pst-empty">No parts logged this period.</div>';
+      const allReqs = []; ALL_MACHINES.forEach(name=> r.perMachine[name].reqNumbers.forEach(rq=> allReqs.push(name+': '+rq)));
+      html += '<div class="pst-section-title">Req Numbers ('+periodLabel+')</div>';
+      html += allReqs.length ? '<ul class="pst-parts-list">'+allReqs.map(rq=>'<li>'+escapeHtml(rq)+'</li>').join('')+'</ul>' : '<div class="pst-empty">No req numbers logged this period.</div>';
+    } else {
+      html += renderBreakdownLog(reportMachineFilter);
+    }
+    return html;
+  }
+
+  function renderActivity(){
+    let html = '<div class="pst-section-title">Full Audit Trail</div>';
+    if(data.events.length===0) return html+'<div class="pst-empty">No activity yet.</div>';
+    html += '<div class="pst-table-wrap"><table class="pst-table"><thead><tr><th>Time</th><th>Machine</th><th>Action</th><th>Actor</th><th>Detail</th></tr></thead><tbody>';
+    data.events.slice(0,150).forEach(e=>{
+      let detail='';
+      if(e.action==='set_down') detail='Down · '+e.detail.reasonCode+' -> '+e.detail.assignedTo+' ('+e.detail.team+')';
+      else if(e.action==='status_changed') detail=e.detail.from+' -> '+e.detail.to;
+      else if(e.action==='work_started') detail='work started';
+      else if(e.action==='requisition_added') detail='req '+e.detail.reqNumber+': '+e.detail.items;
+      else if(e.action==='parts_requested') detail='requested: '+e.detail.request;
+      else if(e.action==='reason_updated') detail='reason -> '+e.detail.reasonCode;
+      else if(e.action==='assigned') detail='assigned -> '+e.detail.assignedTo;
+      else if(e.action==='job_completed') detail='completed: "'+(e.detail.note||'')+'"';
+      else if(e.action==='job_not_completed') detail='not completed: "'+(e.detail.reason||'')+'"';
+      else if(e.action==='resumed') detail='resumed work';
+      else if(e.action==='sent_back') detail='sent back for more work';
+      else if(e.action==='handoff') detail='handed off '+e.detail.from+' -> '+e.detail.to+(e.detail.note?': '+e.detail.note:'');
+      html += '<tr><td>'+fmtTime(e.at)+'</td><td>'+e.machine+'</td><td>'+e.action+'</td><td>'+e.actor+'</td><td>'+escapeHtml(detail)+'</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
+  }
+
+  function renderSettings(){
+    const s = data.settings;
+    let html = '<div class="pst-section-title">Downtime Target</div>'+
+      '<div class="pst-empty">Target is applied as a % of total available time (number of machines &times; 24 hours &times; days in the period). The same % is used for Daily, Weekly, Monthly and All Time reports.</div>'+
+      '<label class="pst-field-label">Downtime target (%)</label><input class="pst-input" id="pst-target-pct" type="number" step="0.1" value="'+s.downtimeTargetPct+'">'+
+      '<button class="pst-btn pst-btn-primary" id="pst-save-settings">Save target</button>';
+
+    html += '<div class="pst-divider"></div><div class="pst-section-title">Manage Passwords</div>'+
+      '<div class="pst-empty">Leave blank for no password (no prompt on switch). Passwords are stored in plain text in the shared data - this is an honor-system gate, not real security.</div>';
+    PEOPLE.forEach(p=>{
+      html += '<label class="pst-field-label">'+escapeHtml(p.label)+'</label><input class="pst-input" data-pw-input="'+p.id+'" type="text" placeholder="No password" value="'+escapeHtml(data.passwords[p.id]||'')+'">';
+    });
+    html += '<button class="pst-btn pst-btn-primary" id="pst-save-passwords">Save Passwords</button>';
+
+    html += '<div class="pst-divider"></div><div class="pst-section-title">Ongoing Use</div>'+
+      '<div class="pst-empty">Clears incidents, changeovers and the activity log. Current machine statuses and jobs in progress are kept. Copy/download your reports first - this cannot be undone.</div>'+
+      '<button class="pst-btn pst-btn-warn" id="pst-clear-history">Clear History (Keep Current Statuses)</button>';
+
+    html += '<div class="pst-divider"></div><div class="pst-section-title">Testing Tools</div>'+
+      '<button class="pst-btn pst-btn-danger" id="pst-reset-data">Reset all demo data</button>';
+    return html;
+  }
+
+  function renderAuthModal(){
+    if(!pendingAuthPersonId) return '';
+    const p = PEOPLE.find(x=>x.id===pendingAuthPersonId);
+    return '<div class="pst-overlay" id="pst-auth-overlay"><div class="pst-modal" style="max-width:340px;">'+
+      '<div class="pst-modal-head"><div class="pst-modal-title">Password</div><button class="pst-close" id="pst-auth-cancel">✕</button></div>'+
+      '<div class="pst-field-label">Enter password for '+escapeHtml(p.label)+'</div>'+
+      '<input class="pst-input" id="pst-auth-input" type="password" autofocus>'+
+      (authError ? '<div style="color:var(--down); font-size:12px; margin-bottom:8px;">Incorrect password - try again.</div>' : '')+
+      '<button class="pst-btn pst-btn-primary" id="pst-auth-submit">Unlock</button>'+
+      '<button class="pst-btn pst-btn-secondary" id="pst-auth-cancel-btn">Cancel</button>'+
+    '</div></div>';
+  }
+
+  function renderRequisitionsList(j){
+    if(!j.requisitions || j.requisitions.length===0) return '<div class="pst-empty">No requisitions logged yet.</div>';
+    return j.requisitions.map(r=>'<div class="pst-req-item"><b>'+escapeHtml(r.reqNumber)+'</b> — '+escapeHtml(r.items||'')+'<br><span style="color:var(--text-dim); font-size:10.5px;">'+r.issuedBy+' · '+fmtTime(r.issuedAt)+'</span></div>').join('');
+  }
+
+  function renderMyPartRequests(j, person){
+    const mine = (j.partRequests||[]).filter(r=>r.requestedBy===person.shortName);
+    if(mine.length===0) return '';
+    let html = '<label class="pst-field-label">Your Parts Requests</label>';
+    mine.forEach(r=>{
+      if(r.fulfilled){
+        html += '<div class="pst-note-box pst-note-fulfilled"><b>Fulfilled - Req '+escapeHtml(r.fulfilledReqNumber)+'</b><br>"'+escapeHtml(r.requestText)+'"<br><span style="color:var(--running); font-weight:700;">Collect the parts from your supervisor.</span></div>';
+      } else {
+        html += '<div class="pst-req-item pst-req-open">"'+escapeHtml(r.requestText)+'"<br><span style="color:var(--text-dim); font-size:10.5px;">Pending supervisor approval · '+fmtTime(r.requestedAt)+'</span></div>';
+      }
+    });
+    return html;
+  }
+
+  function renderModal(){
+    if(!modalMachine) return '';
+    const name = modalMachine; const m = data.machines[name]; const person = me(); const j = m.job;
+    let body = '';
+    body += '<div class="pst-info-line"><span>Status</span><b>'+m.status+'</b></div>';
+    body += '<div class="pst-info-line"><span>Since</span><b>'+fmtTime(m.statusSince)+'</b></div>';
+
+    // ---- MAINTENANCE SUPERVISOR VIEW ----
+    if(person.type==='supervisor'){
+      const myTeam = person.team;
+      const myReasonCodes = reasonCodesFor(myTeam);
+      if(m.status!=='Down'){
+        body += '<div class="pst-divider"></div><div class="pst-field-label">Report a Breakdown</div>';
+        body += '<label class="pst-field-label">Reason</label><select class="pst-select" id="pst-down-reason">'+myReasonCodes.map(r=>'<option value="'+r+'">'+r+'</option>').join('')+'</select>'+
+          '<label class="pst-field-label">Breakdown details</label><textarea class="pst-textarea" id="pst-down-breakdown" placeholder="What happened?"></textarea>'+
+          '<label class="pst-field-label">Intended resolution</label><textarea class="pst-textarea" id="pst-down-resolution" placeholder="Plan to fix it..."></textarea>'+
+          '<label class="pst-field-label">Req number</label><input class="pst-input" id="pst-down-req" placeholder="e.g. REQ-2031">'+
+          '<label class="pst-field-label">Parts required</label><textarea class="pst-textarea" id="pst-down-parts-required" placeholder="Parts anticipated for this job..."></textarea>'+
+          '<label class="pst-field-label">Assign to</label><select class="pst-select" id="pst-down-assign">'+TEAMS[myTeam].members.map(mem=>'<option value="'+mem+'">'+mem+(mem===person.shortName?' (Self)':'')+'</option>').join('')+'</select>';
+        body += '<button class="pst-btn pst-btn-primary" data-set-down="'+name+'">Set Down</button>';
+      } else if(j && j.team===myTeam){
+        body += '<div class="pst-divider"></div><div class="pst-field-label">Job Details ('+j.jobStatus+')</div>';
+        body += '<div class="pst-info-line"><span>Reason</span><b>'+j.reasonCode+(j.reasonCode==='Preventive Maintenance'?' (PM)':'')+'</b></div>';
+        body += '<div class="pst-info-line"><span>Assigned</span><b>'+(j.assignedTo||'Unassigned')+'</b></div>';
+        body += '<div class="pst-info-line"><span>Work started</span><b>'+(j.workStartedAt?fmtTime(j.workStartedAt):'Not yet')+'</b></div>';
+        if(j.breakdownDetails) body += '<div class="pst-note-box"><b>Breakdown details:</b><br>'+escapeHtml(j.breakdownDetails)+'</div>';
+        if(j.intendedResolution) body += '<div class="pst-note-box"><b>Intended resolution:</b><br>'+escapeHtml(j.intendedResolution)+'</div>';
+        if(j.handoffNote) body += '<div class="pst-note-box"><b>Handed off from '+j.handoffFrom+':</b><br>'+escapeHtml(j.handoffNote)+'</div>';
+        if(j.jobStatus==='Not Completed' && j.notCompletedReason) body += '<div class="pst-note-box" style="border:1px solid var(--down);"><b>Not Completed - Reason:</b><br>'+escapeHtml(j.notCompletedReason)+'</div>';
+
+        body += '<label class="pst-field-label">Requisitions (Parts Utilized)</label>'+renderRequisitionsList(j);
+        const openRequests = (j.partRequests||[]).filter(r=>!r.fulfilled);
+        if(openRequests.length){
+          body += '<label class="pst-field-label" style="color:var(--pending);">Open Parts Requests From Technician</label>';
+          openRequests.forEach(r=>{ body += '<div class="pst-req-item pst-req-open">"'+escapeHtml(r.requestText)+'"<br><span style="color:var(--text-dim); font-size:10.5px;">'+r.requestedBy+' · '+fmtTime(r.requestedAt)+'</span></div>'; });
+        }
+        body += '<button class="pst-btn pst-btn-secondary" id="pst-toggle-add-req">+ Add New Req</button>';
+        body += '<div id="pst-add-req-fields" style="display:none;">'+
+          '<input class="pst-input" id="pst-add-req-number" placeholder="Req number">'+
+          '<textarea class="pst-textarea" id="pst-add-req-items" placeholder="Items"></textarea>'+
+          '<button class="pst-btn pst-btn-primary" data-add-req="'+name+'">Save Requisition</button>'+
+        '</div>';
+
+        if(j.jobStatus==='Unassigned'){
+          body += '<div class="pst-divider"></div><label class="pst-field-label">Assign to</label><select class="pst-select" id="pst-assign-select">'+TEAMS[myTeam].members.map(mem=>'<option value="'+mem+'">'+mem+(mem===person.shortName?' (Self)':'')+'</option>').join('')+'</select>'+
+            '<button class="pst-btn pst-btn-primary" data-assign="'+name+'">Assign</button>';
+        } else {
+          body += '<div class="pst-divider"></div><label class="pst-field-label">Update reason</label><select class="pst-select" id="pst-update-reason">'+myReasonCodes.map(r=>'<option value="'+r+'"'+(j.reasonCode===r?' selected':'')+'>'+r+'</option>').join('')+'</select>'+
+            '<button class="pst-btn pst-btn-secondary" data-save-reason="'+name+'">Save reason</button>';
+          body += '<label class="pst-field-label">Reassign to</label><select class="pst-select" id="pst-reassign-select">'+TEAMS[myTeam].members.map(mem=>'<option value="'+mem+'"'+(j.assignedTo===mem?' selected':'')+'>'+mem+(mem===person.shortName?' (Self)':'')+'</option>').join('')+'</select>'+
+            '<button class="pst-btn pst-btn-secondary" data-reassign="'+name+'">Reassign</button>';
+          if(j.workDoneNote) body += '<div class="pst-note-box"><b>Technician completion note:</b><br>'+escapeHtml(j.workDoneNote)+'</div>';
+          if(j.jobStatus==='Job Completed'){
+            body += '<div class="pst-divider"></div><div class="pst-field-label" style="color:var(--pending);">Awaiting Your Approval</div>';
+            body += '<button class="pst-btn pst-btn-primary" data-approve="'+name+'">Approve -> Hand Over to Production</button>';
+            body += '<button class="pst-btn pst-btn-secondary" data-send-back="'+name+'">Send Back For More Work</button>';
+          }
+          if(j.jobStatus==='Not Completed'){
+            body += '<div class="pst-divider"></div><div class="pst-field-label" style="color:var(--down);">Needs Attention</div>';
+            body += '<button class="pst-btn pst-btn-secondary" data-resume-work="'+name+'">Resume Work (Same Tech)</button>';
+          }
+          body += '<div class="pst-divider"></div>';
+          body += '<label class="pst-field-label">Hand off to '+(myTeam==='E&I'?'Mechanical':'E&I')+' team</label>';
+          body += '<textarea class="pst-textarea" id="pst-handoff-note" placeholder="Why does this need the other team?"></textarea>';
+          body += '<select class="pst-select" id="pst-handoff-reason">'+reasonCodesFor(myTeam==='E&I'?'Mechanical':'E&I').map(r=>'<option value="'+r+'"'+(j.reasonCode===r?' selected':'')+'>'+r+'</option>').join('')+'</select>';
+          body += '<button class="pst-btn pst-btn-warn" data-handoff="'+name+'">Hand Off Job</button>';
+        }
+      } else if(j){
+        body += '<div class="pst-divider"></div><div class="pst-empty">This job belongs to the '+j.team+' team.</div>';
+      }
+    }
+    // ---- TECHNICIAN VIEW ----
+    else if(person.type==='technician'){
+      if(m.status==='Down' && j){
+        body += '<div class="pst-divider"></div><div class="pst-field-label">Breakdown Details</div>';
+        body += '<div class="pst-info-line"><span>Reason</span><b>'+j.reasonCode+'</b></div>';
+        body += '<div class="pst-info-line"><span>Assigned</span><b>'+(j.assignedTo||'Unassigned')+'</b></div>';
+        if(j.breakdownDetails) body += '<div class="pst-note-box"><b>What happened:</b><br>'+escapeHtml(j.breakdownDetails)+'</div>';
+        if(j.intendedResolution) body += '<div class="pst-note-box"><b>Intended resolution:</b><br>'+escapeHtml(j.intendedResolution)+'</div>';
+        body += '<label class="pst-field-label">Requisitions</label>'+renderRequisitionsList(j);
+        if(j.handoffNote && j.team!==person.team) body += '<div class="pst-note-box">This job was handed off to the '+j.team+' team by '+j.handoffFrom+'.</div>';
+
+        if(j.assignedTo===person.shortName){
+          if(j.jobStatus==='Assigned'){
+            body += '<button class="pst-btn pst-btn-go" data-tech-start-work="'+name+'">Start Work</button>';
+          } else if(j.jobStatus==='Ongoing'){
+            body += '<div class="pst-info-line"><span>Work started</span><b>'+fmtTime(j.workStartedAt)+'</b></div>';
+            body += renderMyPartRequests(j, person);
+            body += '<div class="pst-divider"></div><label class="pst-field-label">Request Additional Parts</label>'+
+              '<textarea class="pst-textarea" id="pst-request-parts" placeholder="What else do you need?"></textarea>'+
+              '<button class="pst-btn pst-btn-secondary" data-request-parts="'+name+'">Send Request to Supervisor</button>';
+            body += '<div class="pst-divider"></div><label class="pst-field-label">Status</label>'+
+              '<select class="pst-select" id="pst-tech-status"><option value="In Progress">In Progress</option><option value="Completed">Completed</option><option value="Not Completed">Not Completed</option></select>';
+            body += '<div id="pst-completed-fields" style="display:none;"><label class="pst-field-label">What was done</label><textarea class="pst-textarea" id="pst-workdone-note" placeholder="Describe the work performed..."></textarea>'+
+              '<button class="pst-btn pst-btn-primary" data-submit-workdone="'+name+'">Completed - Send to Supervisor for Approval</button></div>';
+            body += '<div id="pst-notcompleted-fields" style="display:none;"><label class="pst-field-label">Reason (required)</label><textarea class="pst-textarea" id="pst-notcompleted-reason" placeholder="Why could the job not be completed?"></textarea>'+
+              '<button class="pst-btn pst-btn-danger" data-submit-notcompleted="'+name+'">Not Completed - Notify Supervisor</button></div>';
+            body += '<div id="pst-inprogress-note" class="pst-empty">Keep working - update this when the job is finished.</div>';
+          } else if(j.jobStatus==='Job Completed'){
+            body += renderMyPartRequests(j, person);
+            body += '<div class="pst-note-box">Submitted - waiting on supervisor review.<br><br><b>Your note:</b> '+escapeHtml(j.workDoneNote||'')+'</div>';
+          } else if(j.jobStatus==='Not Completed'){
+            body += renderMyPartRequests(j, person);
+            body += '<div class="pst-note-box">Marked Not Completed - waiting on supervisor.<br><br><b>Reason given:</b> '+escapeHtml(j.notCompletedReason||'')+'</div>';
+          }
+        } else {
+          body += '<div class="pst-empty">This job is not assigned to you.</div>';
+        }
+      } else {
+        body += '<div class="pst-divider"></div><div class="pst-empty">Nothing to do here - only supervisors report breakdowns.</div>';
+      }
+    }
+    // ---- PRODUCTION SUPERVISOR VIEW ----
+    else if(person.type==='production'){
+      if(m.status==='Handed Over'){
+        body += '<div class="pst-divider"></div><div class="pst-empty">Maintenance has handed this machine back to production.</div>';
+        body += '<button class="pst-btn pst-btn-go" data-start-machine="'+name+'">Start Machine -> Running</button>';
+      } else if(['Running','Idle','Changeover'].includes(m.status)){
+        body += '<div class="pst-divider"></div><div class="pst-field-label">Change Status</div>';
+        body += '<select class="pst-select" id="pst-prod-status">'+['Running','Idle','Changeover'].map(s=>'<option value="'+s+'"'+(m.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select>';
+        body += '<button class="pst-btn pst-btn-primary" id="pst-prod-apply">Set Status</button>';
+      } else {
+        body += '<div class="pst-divider"></div><div class="pst-empty">This machine is with the maintenance team.</div>';
+      }
+    }
+    // ---- MANAGER VIEW (read-only) ----
+    else {
+      if(m.status==='Down' && j){
+        body += '<div class="pst-divider"></div>';
+        body += '<div class="pst-info-line"><span>Reason</span><b>'+j.reasonCode+'</b></div>';
+        body += '<div class="pst-info-line"><span>Team</span><b>'+j.team+'</b></div>';
+        body += '<div class="pst-info-line"><span>Assigned</span><b>'+(j.assignedTo||'Unassigned')+'</b></div>';
+        body += '<div class="pst-info-line"><span>Status</span><b>'+j.jobStatus+'</b></div>';
+        body += '<div class="pst-info-line"><span>Work started</span><b>'+(j.workStartedAt?fmtTime(j.workStartedAt):'Not yet')+'</b></div>';
+        if(j.breakdownDetails) body += '<div class="pst-note-box"><b>Breakdown details:</b><br>'+escapeHtml(j.breakdownDetails)+'</div>';
+        if(j.intendedResolution) body += '<div class="pst-note-box"><b>Intended resolution:</b><br>'+escapeHtml(j.intendedResolution)+'</div>';
+        body += '<label class="pst-field-label">Requisitions</label>'+renderRequisitionsList(j);
+        if(j.workDoneNote) body += '<div class="pst-note-box"><b>Completion note:</b><br>'+escapeHtml(j.workDoneNote)+'</div>';
+        if(j.jobStatus==='Not Completed' && j.notCompletedReason) body += '<div class="pst-note-box"><b>Not Completed reason:</b><br>'+escapeHtml(j.notCompletedReason)+'</div>';
+      }
+    }
+
+    const incs = data.incidents.filter(i=>i.machine===name).sort((a,b)=>new Date(b.downStart)-new Date(a.downStart)).slice(0,5);
+    body += '<div class="pst-divider"></div><div class="pst-field-label">Recent History</div>';
+    body += incs.length ? incs.map(i=>'<div class="pst-info-line"><span>'+fmtTime(i.downStart)+'</span><b>'+i.reasonCode+(i.isPM?' (PM)':'')+' · '+fmtHM(hoursBetween(i.downStart,i.handedOverAt))+(i.isRepeat?' 🔁':'')+'</b></div>').join('') : '<div class="pst-empty">No past incidents.</div>';
+
+    return '<div class="pst-overlay" id="pst-overlay"><div class="pst-modal">'+
+      '<div class="pst-modal-head"><div class="pst-modal-title">'+name+'</div><button class="pst-close" id="pst-modal-close">✕</button></div>'+
+      body+'</div></div>';
+  }
+
+  function render(){
+    const root = document.getElementById('pst-root');
+    let content = '<div class="pst-main">';
+    if(activeTab==='dashboard') content += renderDashboard();
+    else if(activeTab==='myjobs') content += renderMyJobs();
+    else if(activeTab==='teamqueue') content += renderTeamQueue();
+    else if(activeTab==='restartqueue') content += renderRestartQueue();
+    else if(activeTab==='reports') content += renderReports();
+    else if(activeTab==='activity') content += renderActivity();
+    else if(activeTab==='settings') content += renderSettings();
+    content += '</div>';
+    root.innerHTML = renderTopbar()+content+renderModal()+renderAuthModal()+(toastMsg?'<div class="pst-toast">'+toastMsg+'</div>':'');
+    attachHandlers();
+  }
+
+  function attachHandlers(){
+    const root = document.getElementById('pst-root');
+    const roleSel = document.getElementById('pst-role-select');
+    if(roleSel) roleSel.addEventListener('change', e=>{
+      const newId = e.target.value;
+      if(data.passwords[newId] && !unlockedPersonIds.has(newId)){
+        pendingAuthPersonId = newId;
+        authError = false;
+        render();
+      } else {
+        currentPersonId = newId; activeTab='dashboard'; render();
+      }
+    });
+
+    root.querySelectorAll('[data-tab]').forEach(b=> b.addEventListener('click', ()=>{ activeTab=b.dataset.tab; render(); }));
+    root.querySelectorAll('[data-report-period]').forEach(b=> b.addEventListener('click', ()=>{ reportPeriod=b.dataset.reportPeriod; render(); }));
+    const machineFilterSel = document.getElementById('pst-report-machine');
+    if(machineFilterSel) machineFilterSel.addEventListener('change', e=>{ reportMachineFilter=e.target.value; render(); });
+
+    root.querySelectorAll('[data-machine]').forEach(c=> c.addEventListener('click', ()=>{ modalMachine=c.dataset.machine; render(); }));
+    root.querySelectorAll('[data-open-machine]').forEach(c=> c.addEventListener('click', ()=>{ modalMachine=c.dataset.openMachine; render(); }));
+
+    const closeBtn = document.getElementById('pst-modal-close');
+    if(closeBtn) closeBtn.addEventListener('click', ()=>{ modalMachine=null; render(); });
+    const overlay = document.getElementById('pst-overlay');
+    if(overlay) overlay.addEventListener('click', e=>{ if(e.target.id==='pst-overlay'){ modalMachine=null; render(); } });
+
+    const setDownBtn = root.querySelector('[data-set-down]');
+    if(setDownBtn) setDownBtn.addEventListener('click', ()=>{
+      setDown(setDownBtn.dataset.setDown,
+        document.getElementById('pst-down-reason').value,
+        document.getElementById('pst-down-assign').value,
+        document.getElementById('pst-down-breakdown').value,
+        document.getElementById('pst-down-resolution').value,
+        document.getElementById('pst-down-req').value,
+        document.getElementById('pst-down-parts-required').value);
+    });
+
+    const toggleReqBtn = document.getElementById('pst-toggle-add-req');
+    if(toggleReqBtn) toggleReqBtn.addEventListener('click', ()=>{
+      const div = document.getElementById('pst-add-req-fields');
+      div.style.display = div.style.display==='none' ? 'block' : 'none';
+    });
+
+    const assignBtn = root.querySelector('[data-assign]');
+    if(assignBtn) assignBtn.addEventListener('click', ()=>{ reassignJob(assignBtn.dataset.assign, document.getElementById('pst-assign-select').value); modalMachine=null; render(); });
+    const reassignBtn = root.querySelector('[data-reassign]');
+    if(reassignBtn) reassignBtn.addEventListener('click', ()=>{ reassignJob(reassignBtn.dataset.reassign, document.getElementById('pst-reassign-select').value); });
+    const saveReasonBtn = root.querySelector('[data-save-reason]');
+    if(saveReasonBtn) saveReasonBtn.addEventListener('click', ()=>{ updateReason(saveReasonBtn.dataset.saveReason, document.getElementById('pst-update-reason').value); });
+    const addReqBtn = root.querySelector('[data-add-req]');
+    if(addReqBtn) addReqBtn.addEventListener('click', ()=>{
+      addRequisition(addReqBtn.dataset.addReq, document.getElementById('pst-add-req-number').value, document.getElementById('pst-add-req-items').value);
+    });
+    const requestPartsBtn = root.querySelector('[data-request-parts]');
+    if(requestPartsBtn) requestPartsBtn.addEventListener('click', ()=>{ requestParts(requestPartsBtn.dataset.requestParts, document.getElementById('pst-request-parts').value); });
+
+    const approveBtn = root.querySelector('[data-approve]');
+    if(approveBtn) approveBtn.addEventListener('click', ()=>{ approveHandedOver(approveBtn.dataset.approve); modalMachine=null; render(); });
+    const sendBackBtn = root.querySelector('[data-send-back]');
+    if(sendBackBtn) sendBackBtn.addEventListener('click', ()=>{ resumeWork(sendBackBtn.dataset.sendBack); });
+    const resumeBtn = root.querySelector('[data-resume-work]');
+    if(resumeBtn) resumeBtn.addEventListener('click', ()=>{ resumeWork(resumeBtn.dataset.resumeWork); });
+    const handoffBtn = root.querySelector('[data-handoff]');
+    if(handoffBtn) handoffBtn.addEventListener('click', ()=>{
+      handoffJob(handoffBtn.dataset.handoff, document.getElementById('pst-handoff-note').value, document.getElementById('pst-handoff-reason').value);
+    });
+
+    const techStartBtn = root.querySelector('[data-tech-start-work]');
+    if(techStartBtn) techStartBtn.addEventListener('click', ()=>{ techStartWork(techStartBtn.dataset.techStartWork); });
+
+    const techStatusSel = document.getElementById('pst-tech-status');
+    if(techStatusSel){
+      techStatusSel.addEventListener('change', ()=>{
+        const val = techStatusSel.value;
+        document.getElementById('pst-completed-fields').style.display = val==='Completed' ? 'block' : 'none';
+        document.getElementById('pst-notcompleted-fields').style.display = val==='Not Completed' ? 'block' : 'none';
+        document.getElementById('pst-inprogress-note').style.display = val==='In Progress' ? 'block' : 'none';
+      });
+    }
+    const submitWorkdoneBtn = root.querySelector('[data-submit-workdone]');
+    if(submitWorkdoneBtn) submitWorkdoneBtn.addEventListener('click', ()=>{
+      submitJobCompleted(submitWorkdoneBtn.dataset.submitWorkdone, document.getElementById('pst-workdone-note').value);
+    });
+    const submitNotCompletedBtn = root.querySelector('[data-submit-notcompleted]');
+    if(submitNotCompletedBtn) submitNotCompletedBtn.addEventListener('click', ()=>{
+      submitJobNotCompleted(submitNotCompletedBtn.dataset.submitNotcompleted, document.getElementById('pst-notcompleted-reason').value);
+    });
+
+    const startMachineBtn = root.querySelector('[data-start-machine]');
+    if(startMachineBtn) startMachineBtn.addEventListener('click', ()=>{ setSimpleStatus(startMachineBtn.dataset.startMachine, 'Running'); });
+    const prodApplyBtn = document.getElementById('pst-prod-apply');
+    if(prodApplyBtn) prodApplyBtn.addEventListener('click', ()=>{ setSimpleStatus(modalMachine, document.getElementById('pst-prod-status').value); });
+
+    const copyReportBtn = root.querySelector('[data-copy-report]');
+    if(copyReportBtn) copyReportBtn.addEventListener('click', ()=> copyReport(reportPeriod));
+    const dlBtn = root.querySelector('[data-download-report]');
+    if(dlBtn) dlBtn.addEventListener('click', ()=> downloadReport(reportPeriod));
+
+    const saveSettingsBtn = document.getElementById('pst-save-settings');
+    if(saveSettingsBtn) saveSettingsBtn.addEventListener('click', ()=>{
+      saveSettings(document.getElementById('pst-target-pct').value);
+    });
+    const resetBtn = document.getElementById('pst-reset-data');
+    if(resetBtn) resetBtn.addEventListener('click', resetDemoData);
+
+    const clearHistoryBtn = document.getElementById('pst-clear-history');
+    if(clearHistoryBtn) clearHistoryBtn.addEventListener('click', clearHistory);
+
+    const savePasswordsBtn = document.getElementById('pst-save-passwords');
+    if(savePasswordsBtn) savePasswordsBtn.addEventListener('click', ()=>{
+      const newPasswords = {};
+      root.querySelectorAll('[data-pw-input]').forEach(inp=>{
+        if(inp.value && inp.value.trim()) newPasswords[inp.dataset.pwInput] = inp.value.trim();
+      });
+      savePasswords(newPasswords);
+    });
+
+    const authSubmitBtn = document.getElementById('pst-auth-submit');
+    if(authSubmitBtn) authSubmitBtn.addEventListener('click', ()=>{
+      const attempt = document.getElementById('pst-auth-input').value;
+      if(checkPassword(pendingAuthPersonId, attempt)){
+        unlockedPersonIds.add(pendingAuthPersonId);
+        currentPersonId = pendingAuthPersonId;
+        pendingAuthPersonId = null;
+        authError = false;
+        activeTab = 'dashboard';
+        render();
+      } else {
+        authError = true;
+        render();
+      }
+    });
+    const authCancel = document.getElementById('pst-auth-cancel');
+    const authCancelBtn = document.getElementById('pst-auth-cancel-btn');
+    const cancelAuth = ()=>{ pendingAuthPersonId = null; authError = false; render(); };
+    if(authCancel) authCancel.addEventListener('click', cancelAuth);
+    if(authCancelBtn) authCancelBtn.addEventListener('click', cancelAuth);
+  }
+
+  loadData();
+})();
+
+</script>
+</body>
+</html>
